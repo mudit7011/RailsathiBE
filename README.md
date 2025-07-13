@@ -80,8 +80,7 @@ Body:
 
 ## Recording Links
 
-project-features: https://drive.google.com/yourname_project_features.mp4  
-project-technical: https://drive.google.com/yourname_project_technical.mp4
+project-technical: https://drive.google.com/file/d/1nA_10AhoJTFhnT91mupYe-LVA9Wc4-ru/view?usp=sharing
 
 ## Author
 

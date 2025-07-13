@@ -7,7 +7,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Make wait-for-it script executable
 RUN chmod +x wait-for-it.sh
 
 # Wait for DB, then run server

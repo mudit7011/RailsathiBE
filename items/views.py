@@ -6,8 +6,10 @@ import json
 @csrf_exempt
 def item_list(request):
     if request.method == 'GET':
-        items = Item.objects.all().values('id', 'name', 'description')
-        return JsonResponse(list(items), safe=False)
+        items = Item.objects.all()
+        data = [{"id": item.id, "name": item.name, "description": item.description} for item in items]
+        return JsonResponse(data, safe=False)
+
 
     if request.method == 'POST':
         try:
