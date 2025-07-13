@@ -5,7 +5,7 @@ This project is a containerized Django application with PostgreSQL, providing ba
 ## Project Setup
 
 1. Clone the repository:
-   git clone https://github.com/yourusername/RailSathiBE.git
+   git clone https://github.com/mudit7011/RailsathiBE.git
    cd RailSathiBE
 
 2. Create a `.env` file in the root directory with the following content:
