@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Configuration from environment
-GCS_BUCKET_NAME = os.getenv('GCS_BUCKET_NAME', 'sanchalak-media-bucket1')
-PROJECT_ID = os.getenv('PROJECT_ID', 'sanchalak-423912')
+GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "sanchalak-media-bucket1")
+PROJECT_ID = os.getenv("PROJECT_ID", "sanchalak-423912")
 
 
 def get_gcs_client():
@@ -37,18 +37,21 @@ def get_gcs_client():
         print(f"Failed to create GCS client: {e}")
         raise
 
+
 def get_valid_filename(filename):
     """
     Replace django.utils.text.get_valid_filename functionality
     """
-    filename = re.sub(r'[^\w\s-]', '', filename).strip()
-    filename = re.sub(r'[-\s]+', '-', filename)
+    filename = re.sub(r"[^\w\s-]", "", filename).strip()
+    filename = re.sub(r"[-\s]+", "-", filename)
     return filename
+
 
 def sanitize_timestamp(raw_timestamp):
     """Sanitize timestamp for filename"""
     decoded = unquote(raw_timestamp)
     return get_valid_filename(decoded).replace(":", "_")
+
 
 def process_media_file_upload(file_content, file_format, complain_id, media_type):
     """Process and upload media file to Google Cloud Storage"""
@@ -65,42 +68,46 @@ def process_media_file_upload(file_content, file_format, complain_id, media_type
         if media_type == "image":
             file_stream = io.BytesIO(file_content)
             original_image = Image.open(file_stream)
-            if original_image.mode == 'RGBA':
-                original_image = original_image.convert('RGB')
+            if original_image.mode == "RGBA":
+                original_image = original_image.convert("RGB")
             new_file = io.BytesIO()
-            original_image.save(new_file, format='JPEG')
+            original_image.save(new_file, format="JPEG")
             new_file.seek(0)
             key = f"rail_sathi_complain_images/{full_file_name}"
             blob = bucket.blob(key)
-            blob.upload_from_file(new_file, content_type='image/jpeg')
+            blob.upload_from_file(new_file, content_type="image/jpeg")
             print(f"rail_sathi_complain_images Image uploaded: {full_file_name}")
 
         elif media_type == "video":
             try:
                 temp_dir = "/tmp/rail_sathi_temp"
                 os.makedirs(temp_dir, exist_ok=True)
-                
+
                 temp_file_path = os.path.join(temp_dir, full_file_name)
-                compressed_file_path = os.path.join(temp_dir, f"compressed_{full_file_name}")
-                
-                with open(temp_file_path, 'wb') as temp_file:
+                compressed_file_path = os.path.join(
+                    temp_dir, f"compressed_{full_file_name}"
+                )
+
+                with open(temp_file_path, "wb") as temp_file:
                     temp_file.write(file_content)
-                
+
                 clip = VideoFileClip(temp_file_path)
-                target_bitrate = '5000k'
+                target_bitrate = "5000k"
                 try:
-                    clip.write_videofile(compressed_file_path, codec='libx264', bitrate=target_bitrate)
+                    clip.write_videofile(
+                        compressed_file_path, codec="libx264", bitrate=target_bitrate
+                    )
                     clip.close()
                 except Exception as e:
                     print(f"Error compressing video: {e}")
-                
+
                 key = f"rail_sathi_complain_videos/{full_file_name}"
                 blob = bucket.blob(key)
-                with open(compressed_file_path, 'rb') as temp_file:
-                    blob.upload_from_file(temp_file, content_type='video/mp4')
+                with open(compressed_file_path, "rb") as temp_file:
+                    blob.upload_from_file(temp_file, content_type="video/mp4")
                 print(f"rail_sathi_complain_videos Video uploaded: {full_file_name}")
             except Exception as e:
-                print(f'Error while storing video: {repr(e)}')
+                print(f"Error while storing video: {repr(e)}")
             finally:
                 if os.path.exists(compressed_file_path):
                     os.remove(compressed_file_path)
@@ -122,13 +129,16 @@ def process_media_file_upload(file_content, file_format, complain_id, media_type
         print(f"Error processing media file: {e}")
         raise e
 
+
 def upload_file_thread(file_obj, complain_id, user):
     """Upload file in a separate thread with improved error handling"""
     try:
-        logger.info(f"Starting file upload for complaint {complain_id}, file: {getattr(file_obj, 'filename', 'unknown')}")
-        
+        logger.info(
+            f"Starting file upload for complaint {complain_id}, file: {getattr(file_obj, 'filename', 'unknown')}"
+        )
+
         # Read file content - handle both FastAPI UploadFile and regular file objects
-        if hasattr(file_obj, 'read'):
+        if hasattr(file_obj, "read"):
             if asyncio.iscoroutinefunction(file_obj.read):
                 # For async UploadFile, we need to handle this differently
                 logger.error("Async file read not supported in thread context")
@@ -136,34 +146,38 @@ def upload_file_thread(file_obj, complain_id, user):
             file_content = file_obj.read()
         else:
             file_content = file_obj.file.read()
-        
+
         logger.info(f"File content size: {len(file_content)} bytes")
-        
-        filename = getattr(file_obj, 'filename', 'unknown')
-        content_type = getattr(file_obj, 'content_type', 'application/octet-stream')
-        
+
+        filename = getattr(file_obj, "filename", "unknown")
+        content_type = getattr(file_obj, "content_type", "application/octet-stream")
+
         logger.info(f"Processing file: {filename}, content_type: {content_type}")
-        
+
         _, ext = os.path.splitext(filename)
-        ext = ext.lstrip('.').lower()
-        
+        ext = ext.lstrip(".").lower()
+
         # Determine media type
         if content_type.startswith("image"):
             media_type = "image"
         elif content_type.startswith("video"):
             media_type = "video"
         else:
-            logger.warning(f"Unsupported media type for file: {filename}, content_type: {content_type}")
+            logger.warning(
+                f"Unsupported media type for file: {filename}, content_type: {content_type}"
+            )
             return
 
         logger.info(f"Uploading {media_type} file: {filename}")
-        
+
         # Upload file
-        uploaded_url = process_media_file_upload(file_content, ext, complain_id, media_type)
-        
+        uploaded_url = process_media_file_upload(
+            file_content, ext, complain_id, media_type
+        )
+
         if uploaded_url:
             logger.info(f"File uploaded successfully: {uploaded_url}")
-            
+
             # Insert media record into database
             conn = get_db_connection()
             try:
@@ -174,9 +188,13 @@ def upload_file_thread(file_obj, complain_id, user):
                 """
                 now = datetime.now()
                 cursor = conn.cursor()
-                cursor.execute(query, (complain_id, media_type, uploaded_url, user, now, now))
+                cursor.execute(
+                    query, (complain_id, media_type, uploaded_url, user, now, now)
+                )
                 conn.commit()
-                logger.info(f"Media record created successfully for complaint {complain_id}")
+                logger.info(
+                    f"Media record created successfully for complaint {complain_id}"
+                )
             except Exception as db_error:
                 logger.error(f"Database error while saving media record: {db_error}")
                 conn.rollback()
@@ -184,46 +202,56 @@ def upload_file_thread(file_obj, complain_id, user):
                 conn.close()
         else:
             logger.error(f"File upload failed for complaint {complain_id}: {filename}")
-            
+
     except Exception as e:
-        logger.error(f"Error in upload_file_thread for file {getattr(file_obj, 'filename', 'unknown')}: {e}")
+        logger.error(
+            f"Error in upload_file_thread for file {getattr(file_obj, 'filename', 'unknown')}: {e}"
+        )
         import traceback
+
         logger.error(f"Full traceback: {traceback.format_exc()}")
+
 
 async def upload_file_async(file_obj: UploadFile, complain_id: int, user: str):
     """Async version of file upload"""
     try:
-        logger.info(f"Starting async file upload for complaint {complain_id}, file: {file_obj.filename}")
-        
+        logger.info(
+            f"Starting async file upload for complaint {complain_id}, file: {file_obj.filename}"
+        )
+
         # Read file content asynchronously
         file_content = await file_obj.read()
         logger.info(f"File content size: {len(file_content)} bytes")
-        
+
         filename = file_obj.filename
         content_type = file_obj.content_type
-        
+
         logger.info(f"Processing file: {filename}, content_type: {content_type}")
-        
+
         _, ext = os.path.splitext(filename)
-        ext = ext.lstrip('.').lower()
-        
+        ext = ext.lstrip(".").lower()
+
         # Determine media type
         if content_type.startswith("image"):
             media_type = "image"
         elif content_type.startswith("video"):
             media_type = "video"
         else:
-            logger.warning(f"Unsupported media type for file: {filename}, content_type: {content_type}")
+            logger.warning(
+                f"Unsupported media type for file: {filename}, content_type: {content_type}"
+            )
             return False
 
         logger.info(f"Uploading {media_type} file: {filename}")
-        
+
         # Upload file
-        uploaded_url = process_media_file_upload(file_content, ext, complain_id, media_type)
-        
+        uploaded_url = process_media_file_upload(
+            file_content, ext, complain_id, media_type
+        )
+
         if uploaded_url:
             logger.info(f"File uploaded successfully: {uploaded_url}")
-            
+
             # Insert media record into database
             conn = get_db_connection()
             try:
@@ -234,9 +262,13 @@ async def upload_file_async(file_obj: UploadFile, complain_id: int, user: str):
                 """
                 now = datetime.now()
                 cursor = conn.cursor()
-                cursor.execute(query, (complain_id, media_type, uploaded_url, user, now, now))
+                cursor.execute(
+                    query, (complain_id, media_type, uploaded_url, user, now, now)
+                )
                 conn.commit()
-                logger.info(f"Media record created successfully for complaint {complain_id}")
+                logger.info(
+                    f"Media record created successfully for complaint {complain_id}"
+                )
                 return True
             except Exception as db_error:
                 logger.error(f"Database error while saving media record: {db_error}")
@@ -247,12 +279,14 @@ async def upload_file_async(file_obj: UploadFile, complain_id: int, user: str):
         else:
             logger.error(f"File upload failed for complaint {complain_id}: {filename}")
             return False
-            
+
     except Exception as e:
         logger.error(f"Error in upload_file_async for file {file_obj.filename}: {e}")
         import traceback
+
         logger.error(f"Full traceback: {traceback.format_exc()}")
         return False
+
 
 # Test function to verify setup
 def test_gcs_connection():
@@ -262,11 +296,11 @@ def test_gcs_connection():
         print(f"Project ID: {PROJECT_ID}")
         print(f"Bucket Name: {GCS_BUCKET_NAME}")
         print(f"Credentials Path: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}")
-        
+
         client = get_gcs_client()
         bucket = client.bucket(GCS_BUCKET_NAME)
         bucket.reload()  # This will fail if no access
-        
+
         print(f"✓ Successfully connected to bucket: {GCS_BUCKET_NAME}")
         print(f"✓ Bucket location: {bucket.location}")
         print(f"✓ Bucket storage class: {bucket.storage_class}")
@@ -274,29 +308,31 @@ def test_gcs_connection():
     except Exception as e:
         print(f"✗ Failed to connect to GCS bucket: {e}")
         return False
-    
+
+
 def validate_and_process_train_data(complaint_data):
     """Validate and process train data"""
     conn = get_db_connection()
     try:
-        if complaint_data.get('train_id'):
+        if complaint_data.get("train_id"):
             # Get train details by ID
             query = "SELECT * FROM trains_traindetails WHERE id = %s"
-            train = execute_query_one(conn, query, (complaint_data['train_id'],))
+            train = execute_query_one(conn, query, (complaint_data["train_id"],))
             if train:
-                complaint_data['train_number'] = train['train_no']
-                complaint_data['train_name'] = train['train_name']
-        elif complaint_data.get('train_number'):
+                complaint_data["train_number"] = train["train_no"]
+                complaint_data["train_name"] = train["train_name"]
+        elif complaint_data.get("train_number"):
             # Get train details by number
             query = "SELECT * FROM trains_traindetails WHERE train_no = %s"
-            train = execute_query_one(conn, query, (complaint_data['train_number'],))
+            train = execute_query_one(conn, query, (complaint_data["train_number"],))
             if train:
-                complaint_data['train_id'] = train['id']
-                complaint_data['train_name'] = train['train_name']
-        
+                complaint_data["train_id"] = train["id"]
+                complaint_data["train_name"] = train["train_name"]
+
         return complaint_data
     finally:
         conn.close()
+
 
 def create_complaint(complaint_data):
     """Create a new complaint"""
@@ -306,7 +342,7 @@ def create_complaint(complaint_data):
         complaint_data = validate_and_process_train_data(complaint_data)
 
         # Handle date_of_journey - use current date if not provided or invalid
-        date_of_journey_str = complaint_data.get('date_of_journey')
+        date_of_journey_str = complaint_data.get("date_of_journey")
         if date_of_journey_str:
             try:
                 date_of_journey = datetime.strptime(date_of_journey_str, "%Y-%m-%d")
@@ -318,16 +354,15 @@ def create_complaint(complaint_data):
             date_of_journey = datetime.now()
 
         # Handle complain_date
-        complain_date = complaint_data.get('complain_date')
+        complain_date = complaint_data.get("complain_date")
         if isinstance(complain_date, str):
             try:
-                complain_date = datetime.strptime(complain_date, '%Y-%m-%d').date()
+                complain_date = datetime.strptime(complain_date, "%Y-%m-%d").date()
             except ValueError:
                 complain_date = date.today()
         elif complain_date is None:
             complain_date = date.today()
-            
-        
+
         # Insert complaint - PostgreSQL version with RETURNING clause
         query = """
             INSERT INTO rail_sathi_railsathicomplain 
@@ -339,77 +374,90 @@ def create_complaint(complaint_data):
         """
         now = datetime.now()
         cursor = conn.cursor()
-        cursor.execute(query, (
-            complaint_data.get('pnr_number'),
-            complaint_data.get('is_pnr_validated', 'not-attempted'),
-            complaint_data.get('name'),
-            complaint_data.get('mobile_number'),
-            complaint_data.get('complain_type'),
-            complaint_data.get('complain_description'),
-            complain_date,
-            complaint_data.get('complain_status', 'pending'),
-            complaint_data.get('train_id'),
-            complaint_data.get('train_number'),
-            complaint_data.get('train_name'),
-            complaint_data.get('coach'),
-            complaint_data.get('berth_no'),
-            complaint_data.get('created_by'),
-            now,
-            now
-        ))
-        
+        cursor.execute(
+            query,
+            (
+                complaint_data.get("pnr_number"),
+                complaint_data.get("is_pnr_validated", "not-attempted"),
+                complaint_data.get("name"),
+                complaint_data.get("mobile_number"),
+                complaint_data.get("complain_type"),
+                complaint_data.get("complain_description"),
+                complain_date,
+                complaint_data.get("complain_status", "pending"),
+                complaint_data.get("train_id"),
+                complaint_data.get("train_number"),
+                complaint_data.get("train_name"),
+                complaint_data.get("coach"),
+                complaint_data.get("berth_no"),
+                complaint_data.get("created_by"),
+                now,
+                now,
+            ),
+        )
+
         complain_id = cursor.fetchone()[0]
         conn.commit()
-        
+
         # Get the created complaint
         complaint = get_complaint_by_id(complain_id)
-        
+
         # Send email in separate thread
         def _send_email(complaint_data, complaint_id):
             try:
                 logger.info(f"Email thread started for complaint {complaint_id}")
-                
-                train_depo = ''
-                if complaint_data.get('train_id'):
+
+                train_depo = ""
+                if complaint_data.get("train_id"):
                     train_query = "SELECT * FROM trains_traindetails WHERE id = %s"
                     train_conn = get_db_connection()
-                    train = execute_query_one(train_conn, train_query, (complaint_data['train_id'],))
+                    train = execute_query_one(
+                        train_conn, train_query, (complaint_data["train_id"],)
+                    )
                     train_conn.close()
                     if train:
-                        train_depo = train.get('Depot', '')
-                elif complaint_data.get('train_number'):
-                    train_query = "SELECT * FROM trains_traindetails WHERE train_no = %s"
+                        train_depo = train.get("Depot", "")
+                elif complaint_data.get("train_number"):
+                    train_query = (
+                        "SELECT * FROM trains_traindetails WHERE train_no = %s"
+                    )
                     train_conn = get_db_connection()
-                    train = execute_query_one(train_conn, train_query, (complaint_data['train_number'],))
+                    train = execute_query_one(
+                        train_conn, train_query, (complaint_data["train_number"],)
+                    )
                     train_conn.close()
                     if train:
-                        train_depo = train.get('Depot', '')
-                
+                        train_depo = train.get("Depot", "")
+
                 details = {
-                    'train_no': complaint_data.get('train_number', ''),
-                    'train_name': complaint_data.get('train_name', ''),
-                    'user_phone_number': complaint_data.get('mobile_number', ''),
-                    'passenger_name': complaint_data.get('name', ''),
-                    'pnr': complaint_data.get('pnr_number', ''),
-                    'berth': complaint_data.get('berth_no', ''),
-                    'coach': complaint_data.get('coach', ''),
-                    'complain_id': complaint_id,
-                    'description': complaint_data.get('complain_description', ''),
-                    'train_depo': train_depo,
-                    'date_of_journey': date_of_journey.strftime("%d %b %Y"),
+                    "train_no": complaint_data.get("train_number", ""),
+                    "train_name": complaint_data.get("train_name", ""),
+                    "user_phone_number": complaint_data.get("mobile_number", ""),
+                    "passenger_name": complaint_data.get("name", ""),
+                    "pnr": complaint_data.get("pnr_number", ""),
+                    "berth": complaint_data.get("berth_no", ""),
+                    "coach": complaint_data.get("coach", ""),
+                    "complain_id": complaint_id,
+                    "description": complaint_data.get("complain_description", ""),
+                    "train_depo": train_depo,
+                    "date_of_journey": date_of_journey.strftime("%d %b %Y"),
                 }
-                
-                logger.info(f"Sending email for complaint {complaint_id} to war room users")
+
+                logger.info(
+                    f"Sending email for complaint {complaint_id} to war room users"
+                )
                 send_passenger_complain_email(details)
                 logger.info(f"Email sent successfully for complaint {complaint_id}")
             except Exception as e:
-                logger.error(f"Email thread failure for complaint {complaint_id}: {str(e)}")
-        
+                logger.error(
+                    f"Email thread failure for complaint {complaint_id}: {str(e)}"
+                )
+
         try:
             email_thread = threading.Thread(
                 target=_send_email,
                 args=(complaint_data, complain_id),
-                name=f"EmailThread-{complain_id}"
+                name=f"EmailThread-{complain_id}",
             )
             email_thread.daemon = True
             logger.info(f"Starting email thread for complaint {complain_id}")
@@ -417,10 +465,11 @@ def create_complaint(complaint_data):
             logger.info(f"Email thread started with name {email_thread.name}")
         except Exception as e:
             logger.error(f"Failed to create email thread: {str(e)}")
-        
+
         return complaint
     finally:
         conn.close()
+
 
 def get_complaint_by_id(complain_id: int):
     """Get complaint by ID with media files"""
@@ -434,10 +483,10 @@ def get_complaint_by_id(complain_id: int):
             WHERE c.complain_id = %s
         """
         complaint = execute_query_one(conn, query, (complain_id,))
-        
+
         if not complaint:
             return None
-        
+
         # Get media files
         media_query = """
             SELECT id, media_type, media_url, created_at, updated_at, created_by, updated_by
@@ -445,12 +494,13 @@ def get_complaint_by_id(complain_id: int):
             WHERE complain_id = %s
         """
         media_files = execute_query(conn, media_query, (complain_id,))
-        
+
         # Format response
-        complaint['rail_sathi_complain_media_files'] = media_files or []
+        complaint["rail_sathi_complain_media_files"] = media_files or []
         return complaint
     finally:
         conn.close()
+
 
 def get_complaints_by_date(complain_date: date, mobile_number: str):
     """Get complaints by date and mobile number"""
@@ -463,7 +513,7 @@ def get_complaints_by_date(complain_date: date, mobile_number: str):
             WHERE c.complain_date = %s AND c.mobile_number = %s
         """
         complaints = execute_query(conn, query, (complain_date, mobile_number))
-        
+
         # Get media files for each complaint
         for complaint in complaints:
             media_query = """
@@ -471,12 +521,13 @@ def get_complaints_by_date(complain_date: date, mobile_number: str):
                 FROM rail_sathi_railsathicomplainmedia
                 WHERE complain_id = %s
             """
-            media_files = execute_query(conn, media_query, (complaint['complain_id'],))
-            complaint['rail_sathi_complain_media_files'] = media_files or []
-        
+            media_files = execute_query(conn, media_query, (complaint["complain_id"],))
+            complaint["rail_sathi_complain_media_files"] = media_files or []
+
         return complaints
     finally:
         conn.close()
+
 
 def update_complaint(complain_id: int, update_data: dict):
     """Update complaint"""
@@ -484,51 +535,66 @@ def update_complaint(complain_id: int, update_data: dict):
     try:
         # Validate and process train data
         update_data = validate_and_process_train_data(update_data)
-        
+
         # Parse complain_date if it's a string
-        if 'complain_date' in update_data and isinstance(update_data['complain_date'], str):
+        if "complain_date" in update_data and isinstance(
+            update_data["complain_date"], str
+        ):
             try:
-                update_data['complain_date'] = datetime.strptime(update_data['complain_date'], '%Y-%m-%d').date()
+                update_data["complain_date"] = datetime.strptime(
+                    update_data["complain_date"], "%Y-%m-%d"
+                ).date()
             except ValueError:
                 pass  # Keep original value if parsing fails
-        
+
         # Build dynamic update query
         update_fields = []
         values = []
-        
+
         allowed_fields = [
-            'pnr_number', 'is_pnr_validated', 'name', 'mobile_number', 
-            'complain_type', 'complain_description', 'complain_date', 
-            'complain_status', 'train_id', 'train_number', 'train_name', 
-            'coach', 'berth_no', 'updated_by'
+            "pnr_number",
+            "is_pnr_validated",
+            "name",
+            "mobile_number",
+            "complain_type",
+            "complain_description",
+            "complain_date",
+            "complain_status",
+            "train_id",
+            "train_number",
+            "train_name",
+            "coach",
+            "berth_no",
+            "updated_by",
         ]
-        
+
         for field in allowed_fields:
             if field in update_data:
                 update_fields.append(f"{field} = %s")
                 values.append(update_data[field])
-        
+
         if not update_fields:
             return get_complaint_by_id(complain_id)
-        
+
         # Add updated_at
         update_fields.append("updated_at = %s")
         values.append(datetime.now())
         values.append(complain_id)
-        
+
         query = f"""
             UPDATE rail_sathi_railsathicomplain 
             SET {', '.join(update_fields)}
             WHERE complain_id = %s
         """
-        
+
         cursor = conn.cursor()
         cursor.execute(query, tuple(values))
         conn.commit()
-        
+
         return get_complaint_by_id(complain_id)
     finally:
         conn.close()
+
 
 def delete_complaint(complain_id: int):
     """Delete complaint and its media files"""
@@ -536,16 +602,23 @@ def delete_complaint(complain_id: int):
     try:
         # First delete media files
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM rail_sathi_railsathicomplainmedia WHERE complain_id = %s", (complain_id,))
-        
+        cursor.execute(
+            "DELETE FROM rail_sathi_railsathicomplainmedia WHERE complain_id = %s",
+            (complain_id,),
+        )
+
         # Then delete complaint
-        cursor.execute("DELETE FROM rail_sathi_railsathicomplain WHERE complain_id = %s", (complain_id,))
+        cursor.execute(
+            "DELETE FROM rail_sathi_railsathicomplain WHERE complain_id = %s",
+            (complain_id,),
+        )
         deleted_count = cursor.rowcount
         conn.commit()
-        
+
         return deleted_count
     finally:
         conn.close()
+
 
 def delete_complaint_media(complain_id: int, media_ids: List[int]):
     """Delete specific media files from complaint"""
@@ -553,21 +626,22 @@ def delete_complaint_media(complain_id: int, media_ids: List[int]):
     try:
         if not media_ids:
             return 0
-        
+
         # PostgreSQL uses ANY() for IN clause with arrays
         query = """
             DELETE FROM rail_sathi_railsathicomplainmedia 
             WHERE complain_id = %s AND id = ANY(%s)
         """
-        
+
         cursor = conn.cursor()
         cursor.execute(query, (complain_id, media_ids))
         deleted_count = cursor.rowcount
         conn.commit()
-        
+
         return deleted_count
     finally:
         conn.close()
+
 
 def validate_complaint_access(complain_id: int, user_name: str, mobile_number: str):
     """Validate if user can access/modify the complaint"""
@@ -579,15 +653,17 @@ def validate_complaint_access(complain_id: int, user_name: str, mobile_number: s
             WHERE complain_id = %s
         """
         complaint = execute_query_one(conn, query, (complain_id,))
-        
+
         if not complaint:
             return False, "Complaint not found"
-        
-        if (complaint['created_by'] != user_name or 
-            complaint['mobile_number'] != mobile_number or 
-            complaint['complain_status'] == "completed"):
+
+        if (
+            complaint["created_by"] != user_name
+            or complaint["mobile_number"] != mobile_number
+            or complaint["complain_status"] == "completed"
+        ):
             return False, "Only user who created the complaint can update it."
-        
+
         return True, None
     finally:
         conn.close()
